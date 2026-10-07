@@ -17,7 +17,8 @@
     "db:reset": "docker compose down -v && docker compose up -d --wait",
     "migration:run": "node ace migration:run --connection=admin",
     "migration:fresh": "node ace migration:fresh --connection=admin",
-    "db:seed": "node ace db:seed --connection=admin"
+    "db:seed": "node ace db:seed --connection=admin",
+    "check": "pnpm typecheck && pnpm lint && pnpm test"
   },
   "imports": {
     "#contracts/*": "./app/contracts/*.js",
