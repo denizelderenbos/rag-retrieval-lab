@@ -43,20 +43,20 @@ Reranker.rerank()  second stage (NoopReranker for now)
 top `limit` results
 ```
 
-| Folder | Contents |
-|---|---|
-| `app/domain/` | Types without behaviour: `RetrievalCandidate`, `RetrievalMode`, errors |
-| `app/contracts/` | Abstract classes: `EmbeddingProvider`, `Reranker`, `ChunkRepository` |
-| `app/services/` | `RetrievalService` (orchestration), `IngestionService` (chunk, embed, store), `TenantService` |
-| `app/retrieval/` | `hybrid_fusion.ts`: hybrid fusion as a pure function |
-| `app/repositories/` | Raw SQL for full-text search, pgvector and inserts |
-| `app/infrastructure/` | `TenantDatabaseSession`, the fake embedding provider, the noop reranker |
-| `app/tui/` | Ink components, input and rendering only |
-| `providers/rag_provider.ts` | Binds every contract to an implementation. The whole object graph in one place |
-| `commands/rag_demo.ts` | Ace command `rag:demo` |
-| `database/migrations/` | pgvector, tables and indexes, RLS policies and grants |
-| `database/demo/` | The demo corpus and the loader shared by the seeder and the tests |
-| `tests/` | Japa: `unit/` without a database, `functional/` against PostgreSQL |
+| Folder                      | Contents                                                                                      |
+| --------------------------- | --------------------------------------------------------------------------------------------- |
+| `app/domain/`               | Types without behaviour: `RetrievalCandidate`, `RetrievalMode`, errors                        |
+| `app/contracts/`            | Abstract classes: `EmbeddingProvider`, `Reranker`, `ChunkRepository`                          |
+| `app/services/`             | `RetrievalService` (orchestration), `IngestionService` (chunk, embed, store), `TenantService` |
+| `app/retrieval/`            | `hybrid_fusion.ts`: hybrid fusion as a pure function                                          |
+| `app/repositories/`         | Raw SQL for full-text search, pgvector and inserts                                            |
+| `app/infrastructure/`       | `TenantDatabaseSession`, the fake embedding provider, the noop reranker                       |
+| `app/tui/`                  | Ink components, input and rendering only                                                      |
+| `providers/rag_provider.ts` | Binds every contract to an implementation. The whole object graph in one place                |
+| `commands/rag_demo.ts`      | Ace command `rag:demo`                                                                        |
+| `database/migrations/`      | pgvector, tables and indexes, RLS policies and grants                                         |
+| `database/demo/`            | The demo corpus and the loader shared by the seeder and the tests                             |
+| `tests/`                    | Japa: `unit/` without a database, `functional/` against PostgreSQL                            |
 
 Design decisions in short:
 
@@ -82,15 +82,15 @@ pnpm rag                     # starts the TUI
 
 Other scripts:
 
-| Script | Does |
-|---|---|
-| `pnpm test` | All tests (uses the `rag_lab_test` database) |
-| `pnpm test:unit` | Unit tests only, no database needed |
-| `pnpm dev` | Tests in watch mode |
-| `pnpm typecheck` | `tsc --noEmit` with strict TypeScript |
-| `pnpm db:down` | Stops PostgreSQL (data is kept) |
-| `pnpm db:reset` | Deletes the volume and starts fresh (roles and the test database are recreated) |
-| `pnpm migration:fresh` | Rebuilds all tables |
+| Script                 | Does                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------- |
+| `pnpm test`            | All tests (uses the `rag_lab_test` database)                                    |
+| `pnpm test:unit`       | Unit tests only, no database needed                                             |
+| `pnpm dev`             | Tests in watch mode                                                             |
+| `pnpm typecheck`       | `tsc --noEmit` with strict TypeScript                                           |
+| `pnpm db:down`         | Stops PostgreSQL (data is kept)                                                 |
+| `pnpm db:reset`        | Deletes the volume and starts fresh (roles and the test database are recreated) |
+| `pnpm migration:fresh` | Rebuilds all tables                                                             |
 
 `docker/initdb/01-roles-and-databases.sql` only runs on an empty volume. If you change it, run `pnpm db:reset`.
 
@@ -98,13 +98,13 @@ Other scripts:
 
 In the TUI: pick a tenant, type a question (tab fills in an example question), pick a mode. On the results screen, `1` to `4` switches mode instantly for the same question, and `d` shows chunk ids and metadata.
 
-| Tenant | Question | What you see |
-|---|---|---|
-| Northwind Legal | `What is the procedure for SEC-2026-041?` | **keyword** puts the Security Policy first. **vector** puts a generic "procedure" chunk on top: an embedding does not find an identifier meaningful |
+| Tenant          | Question                                                     | What you see                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Northwind Legal | `What is the procedure for SEC-2026-041?`                    | **keyword** puts the Security Policy first. **vector** puts a generic "procedure" chunk on top: an embedding does not find an identifier meaningful           |
 | Northwind Legal | `What should we do if customer credentials may have leaked?` | **keyword** finds nothing: every word has to match and the document says "suspected compromise of client authentication credentials". **vector** does find it |
-| Northwind Legal | `INV-PROC-17` | An exact identifier, keyword search at its strongest |
-| Contoso Finance | the same questions | Different documents, even for `SEC-2026-041`: both tenants happen to use the same code |
-| both | `3` or `4` | A message that hybrid fusion is not implemented yet (see Roadmap) |
+| Northwind Legal | `INV-PROC-17`                                                | An exact identifier, keyword search at its strongest                                                                                                          |
+| Contoso Finance | the same questions                                           | Different documents, even for `SEC-2026-041`: both tenants happen to use the same code                                                                        |
+| both            | `3` or `4`                                                   | A message that hybrid fusion is not implemented yet (see Roadmap)                                                                                             |
 
 The strongest RLS argument is the credentials question: across all tenants, the best semantic match is a chunk owned by **Contoso**. Northwind never gets to see it. Semantic similarity is not authorization. The test `semantic similarity is not authorization` in `tests/functional/tenant_isolation.spec.ts` proves it.
 
@@ -128,12 +128,12 @@ A deliberate choice: the `tenants` table has no RLS. The TUI has to show the nam
 
 `RetrievalService.search({ tenantId, query, mode, limit })` validates the request and runs, per mode:
 
-| Mode | Steps |
-|---|---|
-| `keyword` | full-text search, `limit` results |
-| `vector` | embed the question, nearest neighbours, `limit` results |
-| `hybrid` | both, each with `candidatePoolSize` (50) candidates, then `combineResults`, then the top `limit` |
-| `hybrid-rerank` | as hybrid, then `Reranker.rerank` over at most 50 candidates, then the top `limit` |
+| Mode            | Steps                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| `keyword`       | full-text search, `limit` results                                                                |
+| `vector`        | embed the question, nearest neighbours, `limit` results                                          |
+| `hybrid`        | both, each with `candidatePoolSize` (50) candidates, then `combineResults`, then the top `limit` |
+| `hybrid-rerank` | as hybrid, then `Reranker.rerank` over at most 50 candidates, then the top `limit`               |
 
 **Keyword.** `search_vector` is a generated column `to_tsvector('english', content)` with a GIN index. `websearch_to_tsquery` turns the question into an AND query and `SEC-2026-041` into an exact phrase. `ts_rank_cd` scores on how close together the terms are. High precision, low recall for long questions. No BM25: PostgreSQL does not have it built in.
 
