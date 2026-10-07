@@ -7,6 +7,7 @@ import { Reranker } from '#contracts/reranker'
 import { InvalidSearchRequestError } from '#domain/errors'
 import { TenantDatabaseSession } from '#infrastructure/database/tenant_database_session'
 import { FakeEmbeddingProvider } from '#infrastructure/embeddings/fake_embedding_provider'
+import { DbChunkRepository } from '#repositories/db_chunk_repository'
 import { RetrievalService } from '#services/retrieval_service'
 import { createEmptyTenant, seedDemoTenants, type DemoTenants } from '#tests/helpers/demo_tenants'
 
@@ -17,6 +18,22 @@ class CountingEmbeddingProvider extends FakeEmbeddingProvider {
   async embed(text: string) {
     this.calls++
     return super.embed(text)
+  }
+}
+
+/** Remembers which limit each first-stage search was asked for. */
+class LimitRecordingChunkRepository extends DbChunkRepository {
+  keywordLimits: number[] = []
+  vectorLimits: number[] = []
+
+  async searchByKeyword(...args: Parameters<DbChunkRepository['searchByKeyword']>) {
+    this.keywordLimits.push(args[2])
+    return super.searchByKeyword(...args)
+  }
+
+  async searchByVector(...args: Parameters<DbChunkRepository['searchByVector']>) {
+    this.vectorLimits.push(args[2])
+    return super.searchByVector(...args)
   }
 }
 
@@ -137,8 +154,52 @@ test.group('RetrievalService', (group) => {
     }
   })
 
-  // TODO: implement these once combineResults exists.
-  test('hybrid mode fetches candidatePoolSize candidates from both methods')
-  test('hybrid mode handles both the identifier question and the semantic question')
+  test('hybrid mode fetches candidatePoolSize candidates from both methods', async ({ assert }) => {
+    const config = app.config.get<RagConfig>('rag')
+    const chunks = new LimitRecordingChunkRepository(config.embeddingDimensions)
+    const recordingService = new RetrievalService(
+      await app.container.make(TenantDatabaseSession),
+      chunks,
+      embeddings,
+      await app.container.make(Reranker),
+      config
+    )
+
+    const response = await recordingService.search({
+      tenantId: tenants.northwind,
+      query: 'procedure',
+      mode: 'hybrid',
+      limit: 2,
+    })
+
+    assert.deepEqual(chunks.keywordLimits, [config.candidatePoolSize])
+    assert.deepEqual(chunks.vectorLimits, [config.candidatePoolSize])
+    assert.lengthOf(response.candidates, 2)
+  })
+
+  test('hybrid mode handles both the identifier question and the semantic question', async ({
+    assert,
+  }) => {
+    // Keyword alone wins the first question, vector alone wins the second.
+    // Hybrid has to get both right.
+    const identifier = await service.search({
+      tenantId: tenants.northwind,
+      query: 'What is the procedure for SEC-2026-041?',
+      mode: 'hybrid',
+    })
+    const semantic = await service.search({
+      tenantId: tenants.northwind,
+      query: 'What should we do if customer credentials may have leaked?',
+      mode: 'hybrid',
+    })
+
+    assert.include(identifier.candidates[0].content, 'SEC-2026-041')
+    assert.isDefined(identifier.candidates[0].keywordRank)
+    assert.isDefined(identifier.candidates[0].vectorRank)
+    assert.match(semantic.candidates[0].content, /^Suspected compromise/)
+    assert.properties(identifier.timings, ['embedding', 'retrieval', 'fusion'])
+  })
+
+  // TODO: implement once there is a real reranker.
   test('hybrid-rerank mode passes the fused candidates to the reranker')
 })
